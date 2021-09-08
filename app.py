@@ -5,7 +5,17 @@ import datetime
 
 from flask import Flask, request, jsonify
 from flask_jwt import JWT, jwt_required, current_identity
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
+
+import cloudinary
+import cloudinary.uploader
+
+
+app = Flask(__name__)
+app.debug = True
+app.config['SECRET_KEY'] = 'super-secret'
+app.config['JWT_EXPIRATION_DELTA'] = datetime.timedelta(seconds=4000)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 
 class User(object):
@@ -45,6 +55,8 @@ def init_product_table():
     print("Opened database successfully")
 
     conn.execute("CREATE TABLE IF NOT EXISTS product(product_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                 "product_img TEXT NOT NULL,"
+                 "descrip TEXT NOT NULL,"
                  "category TEXT NOT NULL,"
                  "name TEXT NOT NULL,"
                  "price TEXT NOT NULL,"
@@ -72,26 +84,22 @@ def identity(payload):
     return userid_table.get(user_id, None)
 
 
-app = Flask(__name__)
-app.debug = True
-app.config['SECRET_KEY'] = 'super-secret'
-app.config['JWT_EXPIRATION_DELTA'] = datetime.timedelta(seconds=4000)
-CORS(app)
+
 
 jwt = JWT(app, authenticate, identity)
 
 
-@app.route('/user-registration/', methods=["POST"])
+@app.route('/registration/', methods=["POST"])
+@cross_origin()
 def user_registration():
     response = {}
 
     if request.method == "POST":
+        name = request.json['name']
+        username = request.json['username']
+        password = request.json['password']
 
-        name = request.form['name']
-        username = request.form['username']
-        password = request.form['password']
-
-        with sqlite3.connect("store.db") as conn:
+        with sqlite3.connect("Hstore.db") as conn:
             cursor = conn.cursor()
             cursor.execute("INSERT INTO user("
                            "name,"
@@ -100,19 +108,21 @@ def user_registration():
             conn.commit()
             response["message"] = "success"
             response["status_code"] = 201
+
         return response
 
 
-@app.route("/login/", methods=["POST"])
-def login():
+@app.route("/auth/", methods=["POST"])
+@cross_origin()
+def auth():
     response = {}
 
     if request.method == "POST":
 
-        username = request.form['username']
-        password = request.form['password']
+        username = request.json['username']
+        password = request.json['password']
 
-        with sqlite3.connect("store.db") as conn:
+        with sqlite3.connect("Hstore.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM user WHERE username='{}' AND password='{}'".format(username, password))
             user_information = cursor.fetchone()
@@ -129,31 +139,34 @@ def login():
             return jsonify(response)
 
 
-
-@app.route('/adding/', methods=["POST"])
+@app.route('/add-product/', methods=["POST"])
 def add_products():
     response = {}
 
     if request.method == "POST":
         category = request.form['category']
-        name = request.form["name"]
-        price = request.form['price']
+        name = request.form['name']
+        descrip = request.form['descrip']
         description = request.form['description']
+        price = request.form['price']
+
+        # print(category, name, description, price)
 
         with sqlite3.connect("Hstore.db") as connection:
             cursor = connection.cursor()
             cursor.execute("INSERT INTO product("
                            "category,"
-                           "name,"
-                           "price,"
-                           "description) VALUES(?, ?, ?, ?)", (category, name, price, description))
+                            "name,"
+                           "descrip,"
+                           "description,"
+                           "price) VALUES(?, ?, ?, ?, ?)", (category, name, descrip, description, price))
             connection.commit()
             response["message"] = "success"
             response["status_code"] = 201
         return response
 
 
-@app.route('/view/')
+@app.route('/view-products/')
 def view_products():
     response = {}
 
@@ -168,8 +181,7 @@ def view_products():
     return response
 
 
-
-@app.route('/changing/<int:product_id>/', methods=["PUT"])
+@app.route('/edit/<int:product_id>/', methods=["PUT"])
 def updating_products(product_id):
     response = {}
 
@@ -216,5 +228,5 @@ def delete_products(product_id):
 
 if __name__ == "__main__":
     app.debug = True
-    app.run()
+    app.run(port=5001)
 
